@@ -18,7 +18,7 @@ local function get_ani_data(file_path,animation_table)
     end
     return animation_table
   end
-  
+
 local function get_animations(file_path) -- Gets animation cords from a text file and also how many frames
     local animation_table = {}
     local file = io.open(file_path,"r")
@@ -48,7 +48,7 @@ end
 function Load_Player_Data()
     -- State Machine Section
 
-    States = {"IDLE","WALKING","ATTACKING","DEAD"}
+    States = {"IDLE","WALKING","RUNNING","ATTACKING","DEAD"}
     Enum(States)
     Current_State = States.IDLE
 
@@ -80,12 +80,102 @@ function Load_Player_Data()
 
 end
 
+local function State_Transition()
+    if Current_State == States.IDLE then
+        if Motion.X ~= 0 or Motion.Y ~= 0 and Key_input("lshift") == 0 then
+            Current_State = States.WALKING
+        elseif Motion.X ~= 0 and Key_input("lshift") == 1 or Motion.Y ~= 0 and Key_input("lshift") == 1 then
+            Current_State = States.RUNNING
+        end
+    elseif Current_State == States.WALKING then
+        if Final_motion.X == 0 and Final_motion.Y == 0 then
+            Current_State = States.IDLE
+        elseif Motion.X ~= 0 and Key_input("lshift") == 1 or Motion.Y ~= 0 and Key_input("lshift") == 1 then
+            Current_State = States.RUNNING
+        end
+    elseif Current_State == States.RUNNING then
+        if Motion.X ~= 0 and Key_input("lshift") == 0 or Motion.Y ~= 0 and Key_input("lshift") == 0 then
+            Current_State = States.WALKING
+        elseif Final_motion.X == 0 and Final_motion.Y == 0 then
+            Current_State = States.IDLE
+        end
+    elseif Current_State == States.ATTACKING then
+        Current_State = States.ATTACKING
+    elseif Current_State == States.DEAD then
+        Current_State = States.DEAD
+    end
+end
+
 function Player_Init(pos_x,pos_y)
     Position.X = pos_x
     Position.Y = pos_y
 end
 
-function Player_Motion(DT)
+local function idle()
+    Anim_timer = -0.1
+    Frames = 1
+    Player_image:setViewport(Animation_data[Player_direction][Frames][1],Animation_data[Player_direction][Frames][2],Animation_value.width,Animation_value.height)
+end
+
+local function moving(DT,is_running)
+    if is_running then
+        Acceleration = 6
+        Anim_fps = 6
+    else
+        Acceleration = 4
+        Anim_fps = 4
+    end
+
+    if Motion["X"] ~= 0 or Motion["Y"] ~= 0 then
+        Anim_timer = Anim_timer - DT
+        if Anim_timer <= 0 then
+            Anim_timer = 1/Anim_fps
+            Frames = Frames + 1
+            if Frames > Animation_data[Player_direction .. " frames"] then --- Finds the amount of frames a sprite sheet has so two dif animations can have dif frames
+                Frames = 1
+            end
+        end
+        Player_image:setViewport(Animation_data[Player_direction][Frames][1],Animation_data[Player_direction][Frames][2],Animation_value.width,Animation_value.height)
+    end
+        
+
+    if Motion["X"] ~= 0 then -- Checks if the player is moving then apply some calculations
+        Motion_counter.X_Counter = 0
+        Calculations["X"] = Motion["X"] * Acceleration * DT * FPS
+        Final_motion["X"] = Calculations["X"]
+    end
+          
+    if Motion["X"] == 0 then -- Checks if not moving then slow down the player to a stop
+        if Motion_counter.X_Counter < Friction_duration then
+            Final_motion["X"] = Lerp(Calculations["X"],0,Motion_counter.X_Counter/Friction_duration)
+            Motion_counter.X_Counter = Motion_counter.X_Counter + DT
+        else
+            Calculations["X"] = 0 -- When the timer has passed we set the values to 0 to make sure we dont have random values
+            Final_motion["X"] = 0
+        end
+    end
+    
+    if Motion["Y"] ~= 0 then -- Up and down
+        Motion_counter.Y_Counter = 0
+        Calculations["Y"] = Motion["Y"] * Acceleration * DT * FPS
+        Final_motion["Y"] = Calculations["Y"]
+    end
+          
+    if Motion["Y"] == 0 then
+        if Motion_counter.Y_Counter < Friction_duration then
+            Final_motion["Y"] = Lerp(Calculations["Y"],0,Motion_counter.Y_Counter/Friction_duration)
+            Motion_counter.Y_Counter = Motion_counter.Y_Counter + DT
+        else
+            Calculations["Y"] = 0
+            Final_motion["Y"] = 0
+        end
+    end
+    
+    Position["X"] = Position["X"] + Final_motion["X"] -- Apply the motion to the players position
+    Position["Y"] = Position["Y"] + Final_motion["Y"]
+end
+
+function Player_Actions(DT)
     
     -- Checks which direction the user has input, example d = 1 and a = 0 means moving right
     Motion["X"] = Key_input("d") - Key_input("a")
@@ -103,57 +193,17 @@ function Player_Motion(DT)
         Player_direction = "up"
     end
 
-    if Motion["X"] ~= 0 or Motion["Y"] ~= 0 then
-        Anim_timer = Anim_timer - DT
-        if Anim_timer <= 0 then
-            Anim_timer = 1/Anim_fps
-            Frames = Frames + 1
-            if Frames > Animation_data[Player_direction .. " frames"] then --- Finds the amount of frames a sprite sheet has so two dif animations can have dif frames
-                Frames = 1
-            end
-        end
-
-        Player_image:setViewport(Animation_data[Player_direction][Frames][1],Animation_data[Player_direction][Frames][2],Animation_value.width,Animation_value.height)
-    else
-        Anim_timer = -0.1
-        Player_image:setViewport(0,Animation_data[Player_direction][1][2],Animation_value.width,Animation_value.height)
+    if Current_State == States.IDLE then
+        idle()
+    elseif Current_State == States.WALKING then
+        moving(DT,false)
+    elseif Current_State == States.RUNNING then
+        moving(DT,true)
     end
-
-    if Motion["X"] ~= 0 then -- Checks if the player is moving then apply some calculations
-        Motion_counter.X_Counter = 0
-        Calculations["X"] = Motion["X"] * Acceleration * DT * FPS
-        Final_motion["X"] = Calculations["X"]
-    end
-      
-    if Motion["X"] == 0 then -- Checks if not moving then slow down the player to a stop
-        if Motion_counter.X_Counter < Friction_duration then
-            Final_motion["X"] = Lerp(Calculations["X"],0,Motion_counter.X_Counter/Friction_duration)
-            Motion_counter.X_Counter = Motion_counter.X_Counter + DT
-        else
-            Calculations["X"] = 0 -- When the timer has passed we set the values to 0 to make sure we dont have random values
-            Final_motion["X"] = 0
-        end
-    end
-
-    if Motion["Y"] ~= 0 then -- Up and down
-        Motion_counter.Y_Counter = 0
-        Calculations["Y"] = Motion["Y"] * Acceleration * DT * FPS
-        Final_motion["Y"] = Calculations["Y"]
-    end
-      
-    if Motion["Y"] == 0 then
-        if Motion_counter.Y_Counter < Friction_duration then
-            Final_motion["Y"] = Lerp(Calculations["Y"],0,Motion_counter.Y_Counter/Friction_duration)
-            Motion_counter.Y_Counter = Motion_counter.Y_Counter + DT
-        else
-            Calculations["Y"] = 0
-            Final_motion["Y"] = 0
-        end
-    end
-
-    Position["X"] = Position["X"] + Final_motion["X"] -- Apply the motion to the players position
-    Position["Y"] = Position["Y"] + Final_motion["Y"]
+    State_Transition()
 end
+
+
 
 
 function Draw_Player()

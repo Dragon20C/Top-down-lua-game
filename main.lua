@@ -64,7 +64,7 @@ function love.update(dt)
     if love.keyboard.isDown('escape') then
         love.event.push('quit')
     end
-    Player_Motion(dt)
+    Player_Actions(dt)
     end
 end
 
@@ -91,7 +91,7 @@ function love.draw()
             love.graphics.setColor(1,1,1,1)
     
             local text_width = font:getWidth(button.text)
-            local text_height = font:getHeight(button.text)
+            local text_height = font:getHeight()
     
             love.graphics.print(button["text"],font,button["x"] + (button.width / 2) - (text_width / 2),button["y"] + (text_height / 2) + height)
         end
